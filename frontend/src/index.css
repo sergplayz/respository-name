@@ -1,0 +1,51 @@
+:root {
+  --bg: #0c0f12;
+  --bg-elevated: #141a1f;
+  --border: #243038;
+  --text: #c8d0d6;
+  --text-muted: #7a8a96;
+  --heading: #e8eef2;
+  --accent: #3d7a5c;
+  --accent-hover: #4f9470;
+  --accent-dim: rgba(61, 122, 92, 0.2);
+  --danger: #c45c5c;
+  --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --sans: 'Segoe UI', system-ui, sans-serif;
+
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--accent-hover);
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
