@@ -14,13 +14,23 @@ DB_PATH = Path(os.environ.get("MATCOM_DB", str(DEFAULT_DB))).resolve()
 
 app = FastAPI(title="MATCOM Database Lookup")
 
+
+def _cors_settings() -> tuple[list[str], bool]:
+    """CORS_ORIGINS: comma-separated URLs, or * for any origin (no credentials)."""
+    raw = os.environ.get("CORS_ORIGINS", "").strip()
+    if raw == "*":
+        return ["*"], False
+    if raw:
+        origins = [o.strip() for o in raw.split(",") if o.strip()]
+        return origins, True
+    return ["http://127.0.0.1:5173", "http://localhost:5173"], True
+
+
+_origins, _creds = _cors_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-    ],
-    allow_credentials=True,
+    allow_origins=_origins,
+    allow_credentials=_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )
