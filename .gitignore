@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+backend/.venv/
+.env
+.env.*
+!.env.example

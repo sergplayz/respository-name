@@ -10,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = ROOT / "database.sqlite"
-DB_PATH = Path(os.environ.get("MATCOM_DB", str(DEFAULT_DB))).resolve()
+_env_db = os.environ.get("MATCOM_DB", "").strip()
+DB_PATH = Path(_env_db).resolve() if _env_db else DEFAULT_DB.resolve()
 
 app = FastAPI(title="MATCOM Database Lookup")
 
@@ -22,7 +23,8 @@ def _cors_settings() -> tuple[list[str], bool]:
         return ["*"], False
     if raw:
         origins = [o.strip() for o in raw.split(",") if o.strip()]
-        return origins, True
+        if origins:
+            return origins, True
     return ["http://127.0.0.1:5173", "http://localhost:5173"], True
 
 
@@ -143,6 +145,12 @@ def enrich_columns(table: str, columns: list[dict]) -> list[dict]:
             c["displayName"] = overrides[name]
         out.append(c)
     return out
+
+
+@app.get("/")
+def root():
+    """So load balancers / Render health probes that hit `/` get 200, not 404."""
+    return {"status": "ok", "service": "matcom-api"}
 
 
 @app.get("/api/health")

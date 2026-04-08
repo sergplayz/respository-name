@@ -1,4 +1,6 @@
 # https://render.com/docs/blueprint-spec
+# Use backend/ as the service root so `main.py` (tracked in git) is on PYTHONPATH.
+# (The repo-root shim `main.py` is optional for local runs; it was often never pushed.)
 services:
   - type: web
     name: matcom-api
@@ -6,7 +8,9 @@ services:
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    # `python -m uvicorn` uses the same interpreter as the build (avoids missing `uvicorn` on PATH).
+    startCommand: python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.8"
