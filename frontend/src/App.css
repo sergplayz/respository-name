@@ -489,3 +489,115 @@
   padding-top: 1rem;
   border-top: 1px solid var(--border);
 }
+
+.admin-dev-log-toolbar,
+.admin-advanced-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.admin-dev-log {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 0.45rem 0.5rem;
+  font-size: 0.72rem;
+  font-family: var(--mono, ui-monospace, monospace);
+  line-height: 1.35;
+  margin-bottom: 0.75rem;
+}
+
+.admin-dev-log-empty {
+  margin: 0.25rem 0;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.admin-dev-log-line {
+  margin: 0.35rem 0;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.admin-dev-log-line:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.admin-dev-log-ts {
+  color: var(--text-muted);
+  margin-right: 0.35rem;
+}
+
+.admin-dev-log-lvl {
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  font-weight: 600;
+  margin-right: 0.35rem;
+  opacity: 0.85;
+}
+
+.admin-dev-log-muted .admin-dev-log-lvl {
+  color: var(--text-muted);
+}
+
+.admin-dev-log-warn .admin-dev-log-lvl {
+  color: #d4a534;
+}
+
+.admin-dev-log-err .admin-dev-log-lvl {
+  color: var(--danger);
+}
+
+.admin-dev-log-msg {
+  word-break: break-word;
+}
+
+.admin-dev-log-detail {
+  margin: 0.35rem 0 0;
+  padding: 0.35rem 0.45rem;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  font-size: 0.68rem;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.admin-advanced-dl {
+  margin: 0 0 1rem;
+  padding: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.admin-advanced-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 38%) 1fr;
+  gap: 0.35rem 0.65rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-advanced-row:last-child {
+  border-bottom: none;
+}
+
+.admin-advanced-dl dt {
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.admin-advanced-dl dd {
+  margin: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  word-break: break-word;
+  max-height: 4.5rem;
+  overflow: auto;
+}

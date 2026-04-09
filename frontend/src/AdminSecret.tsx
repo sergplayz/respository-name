@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiUrl } from './api'
+import {
+  clearDevLogs,
+  devLogsToText,
+  getClientAdvancedInfo,
+  logAppEvent,
+  useDevLogs,
+} from './devLog'
 
 /**
  * Hidden entry + client-only “login”. Credentials and overrides live in the browser bundle
@@ -51,6 +58,9 @@ export function AdminSecret() {
   const [latency, setLatency] = useState<LatencyRow[]>([])
   const [loadingLatency, setLoadingLatency] = useState(false)
 
+  const devLogs = useDevLogs()
+  const advancedRows = useMemo(() => getClientAdvancedInfo(), [panelOpen])
+
   const [newUser, setNewUser] = useState('')
   const [newPass, setNewPass] = useState('')
   const [newPass2, setNewPass2] = useState('')
@@ -70,7 +80,9 @@ export function AdminSecret() {
       setHealth((await res.json()) as Health)
     } catch (e) {
       setHealth(null)
-      setHealthErr(e instanceof Error ? e.message : 'Request failed')
+      const msg = e instanceof Error ? e.message : 'Request failed'
+      setHealthErr(msg)
+      logAppEvent('error', 'Admin: health check failed', msg)
     } finally {
       setLoadingHealth(false)
     }
@@ -130,6 +142,14 @@ export function AdminSecret() {
     await timed('GET /api/search', '/api/search?q=a&per_table=1')
 
     setLatency(out)
+    const bad = out.filter((r) => r.error)
+    if (bad.length) {
+      logAppEvent(
+        'warn',
+        `Admin: ${bad.length} latency probe(s) reported errors`,
+        bad.map((r) => `${r.label} (${r.status ?? '—'}): ${r.error}`).join('\n'),
+      )
+    }
     setLoadingLatency(false)
   }, [])
 
@@ -368,6 +388,73 @@ export function AdminSecret() {
                 Refresh health
               </button>
             </div>
+
+            <h3 className="admin-section-title">Developer log</h3>
+            <p className="admin-panel-note">
+              Console output (log / warn / error / debug), uncaught exceptions, promise rejections, and app
+              API errors. Newest at the bottom. Up to 400 lines kept in memory only.
+            </p>
+            <div className="admin-dev-log-toolbar">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(devLogsToText(devLogs))
+                }}
+                disabled={!devLogs.length}
+              >
+                Copy all
+              </button>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => clearDevLogs()}
+                disabled={!devLogs.length}
+              >
+                Clear
+              </button>
+            </div>
+            <div className="admin-dev-log" role="log" aria-live="polite">
+              {!devLogs.length && <p className="admin-dev-log-empty">No entries yet.</p>}
+              {devLogs.map((e) => (
+                <div
+                  key={e.id}
+                  className={`admin-dev-log-line admin-dev-log-${e.level === 'log' || e.level === 'info' || e.level === 'debug' ? 'muted' : e.level === 'warn' ? 'warn' : 'err'}`}
+                >
+                  <span className="admin-dev-log-ts">
+                    {new Date(e.t).toLocaleTimeString(undefined, { hour12: false })}
+                  </span>
+                  <span className="admin-dev-log-lvl">{e.level}</span>
+                  <span className="admin-dev-log-msg">{e.message}</span>
+                  {e.detail && <pre className="admin-dev-log-detail">{e.detail}</pre>}
+                </div>
+              ))}
+            </div>
+
+            <h3 className="admin-section-title">Advanced (client)</h3>
+            <p className="admin-panel-note">
+              Build mode, public Vite env keys, and browser context. No server secrets.
+            </p>
+            <div className="admin-advanced-toolbar">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  const text = advancedRows.map((r) => `${r.key}: ${r.value}`).join('\n')
+                  void navigator.clipboard?.writeText(text)
+                }}
+              >
+                Copy as text
+              </button>
+            </div>
+            <dl className="admin-advanced-dl">
+              {advancedRows.map((row) => (
+                <div key={row.key} className="admin-advanced-row">
+                  <dt>{row.key}</dt>
+                  <dd title={row.value}>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
 
             <h3 className="admin-section-title">Change login</h3>
             <p className="admin-panel-note">

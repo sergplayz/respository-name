@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiUrl, friendlyFetchError } from './api'
+import { logAppEvent } from './devLog'
 import type { ColumnInfo, TableSummary } from './matcomTypes'
 import { fetchTablesOnce } from './tablesClient'
 import { AdminSecret } from './AdminSecret'
@@ -123,7 +124,9 @@ export default function App() {
       } catch (e) {
         if (!cancelled) {
           const msg = e instanceof Error ? e.message : 'Failed to load tables'
-          setTablesError(friendlyFetchError(msg))
+          const friendly = friendlyFetchError(msg)
+          setTablesError(friendly)
+          logAppEvent('error', 'Failed to load /api/tables', friendly)
         }
       }
     })()
@@ -159,7 +162,9 @@ export default function App() {
         if (!cancelled) {
           setRowsData(null)
           const msg = e instanceof Error ? e.message : 'Failed to load rows'
-          setRowsError(friendlyFetchError(msg))
+          const friendly = friendlyFetchError(msg)
+          setRowsError(friendly)
+          logAppEvent('error', `Failed to load rows: ${selected}`, friendly)
         }
       } finally {
         if (!cancelled) setRowsLoading(false)
@@ -184,7 +189,9 @@ export default function App() {
     } catch (e) {
       setGlobalResult(null)
       const msg = e instanceof Error ? e.message : 'Search failed'
-      setGlobalError(friendlyFetchError(msg))
+      const friendly = friendlyFetchError(msg)
+      setGlobalError(friendly)
+      logAppEvent('error', 'Global search failed', friendly)
     } finally {
       setGlobalLoading(false)
     }
