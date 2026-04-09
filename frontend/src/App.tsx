@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiUrl, friendlyFetchError } from './api'
 import type { ColumnInfo, TableSummary } from './matcomTypes'
 import { fetchTablesOnce } from './tablesClient'
+import { AdminSecret } from './AdminSecret'
 import './App.css'
 
 type RowsResponse = {
@@ -351,6 +352,7 @@ export default function App() {
           </>
         )}
       </main>
+      <AdminSecret />
     </div>
   )
 }
