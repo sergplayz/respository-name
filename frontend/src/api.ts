@@ -17,7 +17,7 @@ export async function readApiJson<T>(res: Response): Promise<T> {
   if (head.startsWith('<!') || head.startsWith('<html')) {
     throw new Error(
       'API_HTML_NOT_JSON: The server returned the web app page instead of JSON for /api. ' +
-        'Redeploy the site with the latest vercel.json (filesystem handle before SPA fallback). ' +
+        'Redeploy the site with the latest vercel.json (no catch-all rewrite to index.html for /api). ' +
         'Confirm Vercel Root Directory includes the api/ folder and RENDER_API_URL is set.',
     )
   }
