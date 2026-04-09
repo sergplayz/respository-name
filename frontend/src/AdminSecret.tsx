@@ -88,7 +88,7 @@ export function AdminSecret() {
 
       const token = getToken()
       if (token) {
-        const ds = await fetch(apiUrl('/api/admin/db-status'), {
+        const ds = await fetch(apiUrl('/api/matcom-db-status'), {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (ds.status === 401) {
@@ -252,15 +252,60 @@ export function AdminSecret() {
     e.preventDefault()
     setLoginError('')
     try {
-      const res = await fetch(apiUrl('/api/admin/login'), {
+      const res = await fetch(apiUrl('/api/matcom-login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: user.trim(), password: pass }),
       })
       const raw = await res.text()
       if (res.status === 503) {
+        try {
+          const j = JSON.parse(raw) as {
+            detail?: {
+              message?: string
+              checks?: {
+                has_username?: boolean
+                has_jwt_secret?: boolean
+                jwt_secret_at_least_16_chars?: boolean
+                has_password_plain_or_bcrypt?: boolean
+              }
+              hint?: string
+            }
+          }
+          const d = j.detail
+          if (d && typeof d === 'object' && d.checks) {
+            const c = d.checks
+            const lines: string[] = [
+              'The API is running but admin login is not fully configured on Render.',
+              'Use the Python/API web service → Environment (not the Vercel static site). Then redeploy the API.',
+              '',
+            ]
+            if (!c.has_username) {
+              lines.push('• Set MATCOM_ADMIN_USERNAME (same as the username you type here).')
+            }
+            if (!c.has_jwt_secret) {
+              lines.push('• Set MATCOM_JWT_SECRET to any random string.')
+            } else if (!c.jwt_secret_at_least_16_chars) {
+              lines.push('• MATCOM_JWT_SECRET is too short — use at least 16 characters.')
+            }
+            if (!c.has_password_plain_or_bcrypt) {
+              lines.push('• Set MATCOM_ADMIN_PASSWORD (mark as Secret) or MATCOM_ADMIN_PASSWORD_BCRYPT.')
+            }
+            if (c.has_username && c.has_jwt_secret && c.jwt_secret_at_least_16_chars && c.has_password_plain_or_bcrypt) {
+              lines.push('• All flags look set; redeploy the API so it picks up env vars.')
+            }
+            lines.push('')
+            lines.push('Debug: in a browser open YOUR-RENDER-API-URL/api/health/admin-auth (JSON shows the same checks).')
+            if (d.hint) lines.push(d.hint)
+            setLoginError(lines.join('\n'))
+            return
+          }
+        } catch {
+          /* fall through */
+        }
         setLoginError(
-          'Server admin sign-in is not configured. Set MATCOM_ADMIN_USERNAME, MATCOM_ADMIN_PASSWORD_BCRYPT, and MATCOM_JWT_SECRET on the API.',
+          'Server returned 503 — admin may be unconfigured, or the request did not reach your Render API. ' +
+            'Confirm RENDER_API_URL on Vercel and set MATCOM_ADMIN_USERNAME, MATCOM_JWT_SECRET (16+ chars), and MATCOM_ADMIN_PASSWORD on the Render API service, then redeploy.',
         )
         return
       }

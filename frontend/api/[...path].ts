@@ -3,8 +3,7 @@ import { matcomProxyHandler } from './matcomProxyShared'
 
 /**
  * Proxies same-origin `/api/*` → Render FastAPI.
- * Explicit `api/admin/*.ts` routes also exist — some Vercel projects 404 nested `/api/admin/*`
- * when only this catch-all is deployed.
+ * Admin auth uses flat `/api/matcom-login` and `/api/matcom-db-status` (see sibling files).
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const url = new URL(req.url || '/', 'http://localhost')

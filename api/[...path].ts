@@ -3,7 +3,7 @@ import { matcomProxyHandler } from './matcomProxyShared'
 
 /**
  * Same proxy as `frontend/api/[...path].ts`.
- * Explicit `api/admin/*.ts` routes also exist for Vercel routing reliability.
+ * Admin auth uses flat `/api/matcom-login` and `/api/matcom-db-status`.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const url = new URL(req.url || '/', 'http://localhost')

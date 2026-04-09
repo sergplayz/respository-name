@@ -373,6 +373,8 @@
   margin: 0;
   font-size: 0.85rem;
   color: var(--danger);
+  white-space: pre-line;
+  line-height: 1.45;
 }
 
 .admin-modal-actions {

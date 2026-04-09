@@ -17,12 +17,14 @@ services:
       # Comma-separated frontend URLs (your static site or local dev). Use * to allow any origin.
       - key: CORS_ORIGINS
         sync: false
-      # Admin panel API login: bcrypt hash of password (python -c "import bcrypt; print(bcrypt.hashpw(b'YOURPASS', bcrypt.gensalt()).decode())")
+      # Admin panel: username + JWT secret (≥16 chars) + password as either MATCOM_ADMIN_PASSWORD (Secret) or MATCOM_ADMIN_PASSWORD_BCRYPT
       - key: MATCOM_ADMIN_USERNAME
         sync: false
-      - key: MATCOM_ADMIN_PASSWORD_BCRYPT
-        sync: false
       - key: MATCOM_JWT_SECRET
+        sync: false
+      - key: MATCOM_ADMIN_PASSWORD
+        sync: false
+      - key: MATCOM_ADMIN_PASSWORD_BCRYPT
         sync: false
       # Optional: comma-separated sqlite table names hidden from public /api/tables, /rows, /search
       - key: MATCOM_PUBLIC_TABLE_DENYLIST

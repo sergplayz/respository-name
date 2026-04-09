@@ -1,10 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "rewrites": [{ "source": "/((?!api(?:/|$)).*)", "destination": "/index.html" }],
   "functions": {
     "api/[...path].ts": { "maxDuration": 60 },
-    "api/admin/login.ts": { "maxDuration": 60 },
-    "api/admin/db-status.ts": { "maxDuration": 60 }
+    "api/matcom-login.ts": { "maxDuration": 60 },
+    "api/matcom-db-status.ts": { "maxDuration": 60 }
   }
 }

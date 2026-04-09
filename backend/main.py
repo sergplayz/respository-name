@@ -4,6 +4,7 @@ import os
 import sqlite3
 import time
 from collections import defaultdict
+from secrets import compare_digest
 from functools import lru_cache
 from pathlib import Path
 
@@ -253,25 +254,53 @@ def enrich_columns(table: str, columns: list[dict]) -> list[dict]:
     return out
 
 
-# --- Admin auth (env: MATCOM_ADMIN_USERNAME, MATCOM_ADMIN_PASSWORD_BCRYPT, MATCOM_JWT_SECRET) ---
+# --- Admin auth ---
+# Required: MATCOM_ADMIN_USERNAME, MATCOM_JWT_SECRET (≥16 chars).
+# Password: MATCOM_ADMIN_PASSWORD_BCRYPT (preferred) or MATCOM_ADMIN_PASSWORD (plain; use Render “Secret” type).
 
 
-def _admin_settings() -> tuple[str, str, str] | None:
+def _admin_env_checks() -> dict[str, bool]:
+    """Which pieces exist (no values exposed). Use to debug Render env."""
     user = os.environ.get("MATCOM_ADMIN_USERNAME", "").strip()
-    pw_hash = os.environ.get("MATCOM_ADMIN_PASSWORD_BCRYPT", "").strip()
     secret = os.environ.get("MATCOM_JWT_SECRET", "").strip()
-    if not user or not pw_hash or not secret:
-        return None
-    if len(secret) < 16:
-        return None
-    return user, pw_hash, secret
+    pw_hash = os.environ.get("MATCOM_ADMIN_PASSWORD_BCRYPT", "").strip()
+    pw_plain = os.environ.get("MATCOM_ADMIN_PASSWORD", "").strip()
+    return {
+        "has_username": bool(user),
+        "has_jwt_secret": bool(secret),
+        "jwt_secret_at_least_16_chars": len(secret) >= 16,
+        "has_password_plain_or_bcrypt": bool(pw_hash) or bool(pw_plain),
+    }
 
 
-def _verify_admin_password(plain: str, hashed: str) -> bool:
+def _admin_settings() -> tuple[str, str, str | None, str | None] | None:
+    """(username, jwt_secret, bcrypt_hash_or_none, plain_password_or_none)."""
+    user = os.environ.get("MATCOM_ADMIN_USERNAME", "").strip()
+    secret = os.environ.get("MATCOM_JWT_SECRET", "").strip()
+    pw_hash = os.environ.get("MATCOM_ADMIN_PASSWORD_BCRYPT", "").strip() or None
+    pw_plain = os.environ.get("MATCOM_ADMIN_PASSWORD", "").strip() or None
+    if not user or not secret or len(secret) < 16:
+        return None
+    if not pw_hash and not pw_plain:
+        return None
+    if pw_hash:
+        pw_plain = None
+    return user, secret, pw_hash, pw_plain
+
+
+def _verify_admin_password_bcrypt(plain: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
     except (ValueError, TypeError):
         return False
+
+
+def _password_ok(plain: str, pw_hash: str | None, pw_plain: str | None) -> bool:
+    if pw_hash:
+        return _verify_admin_password_bcrypt(plain, pw_hash)
+    if pw_plain is not None:
+        return compare_digest(plain.encode("utf-8"), pw_plain.encode("utf-8"))
+    return False
 
 
 def _mint_jwt(username: str, secret: str) -> str:
@@ -294,13 +323,21 @@ class AdminLoginBody(BaseModel):
     password: str = Field(..., min_length=1, max_length=256)
 
 
+def _admin_not_configured_detail() -> dict:
+    return {
+        "message": "Admin authentication is not configured on the server",
+        "checks": _admin_env_checks(),
+        "hint": "Set variables on the Render Python service (not Vercel). Use the same environment (Production vs Preview) as your live URL. Save, then Manual Deploy.",
+    }
+
+
 def require_admin(
     credentials: HTTPAuthorizationCredentials | None = Depends(security_bearer),
 ) -> str:
     settings = _admin_settings()
     if not settings:
-        raise HTTPException(status_code=503, detail="Admin authentication is not configured")
-    _expected_user, _pw_hash, secret = settings
+        raise HTTPException(status_code=503, detail=_admin_not_configured_detail())
+    _expected_user, secret, _pw_hash, _pw_plain = settings
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     sub = _decode_jwt(credentials.credentials.strip(), secret)
@@ -323,17 +360,28 @@ def health(request: Request):
     return {"ok": True}
 
 
+@app.get("/api/health/admin-auth")
+@limiter.limit("60/minute")
+def health_admin_auth(request: Request):
+    """Shows which admin env vars are present (no secrets). Open on Render to verify configuration."""
+    checks = _admin_env_checks()
+    ready = (
+        checks["has_username"]
+        and checks["has_jwt_secret"]
+        and checks["jwt_secret_at_least_16_chars"]
+        and checks["has_password_plain_or_bcrypt"]
+    )
+    return {"ready": ready, "checks": checks}
+
+
 @app.post("/api/admin/login")
 def admin_login(request: Request, payload: AdminLoginBody):
     check_admin_login_rate(request)
     settings = _admin_settings()
     if not settings:
-        raise HTTPException(
-            status_code=503,
-            detail="Admin authentication is not configured on the server",
-        )
-    expected_user, pw_hash, secret = settings
-    if payload.username != expected_user or not _verify_admin_password(payload.password, pw_hash):
+        raise HTTPException(status_code=503, detail=_admin_not_configured_detail())
+    expected_user, secret, pw_hash, pw_plain = settings
+    if payload.username != expected_user or not _password_ok(payload.password, pw_hash, pw_plain):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     token = _mint_jwt(expected_user, secret)
     return {"access_token": token, "token_type": "bearer", "expires_in": 7 * 24 * 3600}
