@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { apiUrl, friendlyFetchError } from './api'
 import './App.css'
 
 type ColumnInfo = {
@@ -128,7 +129,7 @@ export default function App() {
     ;(async () => {
       setTablesError(null)
       try {
-        const res = await fetch('/api/tables')
+        const res = await fetch(apiUrl('/api/tables'))
         if (!res.ok) throw new Error(await res.text())
         const data = (await res.json()) as { tables: TableSummary[] }
         if (cancelled) return
@@ -136,7 +137,8 @@ export default function App() {
         setSelected((prev) => prev ?? data.tables[0]?.name ?? null)
       } catch (e) {
         if (!cancelled) {
-          setTablesError(e instanceof Error ? e.message : 'Failed to load tables')
+          const msg = e instanceof Error ? e.message : 'Failed to load tables'
+          setTablesError(friendlyFetchError(msg))
         }
       }
     })()
@@ -162,14 +164,17 @@ export default function App() {
         })
         const q = debouncedFilter.trim()
         if (q) params.set('q', q)
-        const res = await fetch(`/api/tables/${encodeURIComponent(selected)}/rows?${params}`)
+        const res = await fetch(
+          apiUrl(`/api/tables/${encodeURIComponent(selected)}/rows?${params}`),
+        )
         if (!res.ok) throw new Error(await res.text())
         const data = (await res.json()) as RowsResponse
         if (!cancelled) setRowsData(data)
       } catch (e) {
         if (!cancelled) {
           setRowsData(null)
-          setRowsError(e instanceof Error ? e.message : 'Failed to load rows')
+          const msg = e instanceof Error ? e.message : 'Failed to load rows'
+          setRowsError(friendlyFetchError(msg))
         }
       } finally {
         if (!cancelled) setRowsLoading(false)
@@ -187,13 +192,14 @@ export default function App() {
     setGlobalError(null)
     try {
       const params = new URLSearchParams({ q, per_table: '12' })
-      const res = await fetch(`/api/search?${params}`)
+      const res = await fetch(apiUrl(`/api/search?${params}`))
       if (!res.ok) throw new Error(await res.text())
       const data = (await res.json()) as SearchResponse
       setGlobalResult(data)
     } catch (e) {
       setGlobalResult(null)
-      setGlobalError(e instanceof Error ? e.message : 'Search failed')
+      const msg = e instanceof Error ? e.message : 'Search failed'
+      setGlobalError(friendlyFetchError(msg))
     } finally {
       setGlobalLoading(false)
     }
