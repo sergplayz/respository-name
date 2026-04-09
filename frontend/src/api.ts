@@ -1,13 +1,10 @@
 /**
- * Local dev: leave API env unset → relative `/api` + Vite proxy.
- * Vercel: set `RENDER_API_URL` or `VITE_API_URL` (no trailing slash) on the project;
- * it is baked in at **build** time via vite.config `define`.
+ * Local dev: `/api` is proxied to FastAPI (vite.config).
+ * Vercel: `/api/*` is handled by `api/[...path].ts`, which forwards to `RENDER_API_URL`.
  */
 export function apiUrl(path: string): string {
-  const base = __API_ORIGIN__.replace(/\/$/, '')
   const p = path.startsWith('/') ? path : `/${path}`
-  if (!base) return p
-  return `${base}${p}`
+  return p
 }
 
 export function friendlyFetchError(message: string): string {
@@ -17,10 +14,14 @@ export function friendlyFetchError(message: string): string {
     /::[a-z0-9]+-\d+-\d+[a-f0-9]+/i.test(message)
   ) {
     return (
-      'API URL is missing from the built site. In Vercel → Settings → Environment Variables, add ' +
-      'RENDER_API_URL (recommended) or VITE_API_URL = https://your-service.onrender.com (no trailing slash). ' +
-      'Enable it for Production (and Preview if you use it), then trigger a new deployment. ' +
-      'On Render, set CORS_ORIGINS to your Vercel URL or *.'
+      'Vercel returned 404 for /api (no serverless route). Redeploy after pulling the latest frontend, ' +
+      'or set RENDER_API_URL on Vercel so the API proxy can run.'
+    )
+  }
+  if (message.includes('RENDER_API_URL is not set')) {
+    return (
+      'Set RENDER_API_URL in Vercel → Environment Variables to your Render API base URL ' +
+      '(https://your-service.onrender.com, no slash). Enable it for Production and Preview, then redeploy.'
     )
   }
   return message.length > 400 ? `${message.slice(0, 400)}…` : message
