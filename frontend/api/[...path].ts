@@ -4,7 +4,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
  * Proxies same-origin `/api/*` → Render FastAPI.
  * Set one of: RENDER_API_URL, MATCOM_API_URL (no trailing slash; include https://).
  *
- * Vercel project Root Directory must be `frontend` so this `api/` folder deploys.
+ * Use when Vercel Root Directory = `frontend`. If Root Directory is the repo root instead,
+ * the copy at `../api/[...path].ts` + root `vercel.json` deploys the same proxy.
  */
 
 const HOP_BY_HOP = new Set([
@@ -109,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       error: 'Proxy could not reach your Render API.',
       detail: message,
       hint:
-        'Check RENDER_API_URL, wake Render (free tier sleeps), and Vercel Root Directory = frontend.',
+        'Check RENDER_API_URL, wake Render (free tier sleeps). Vercel: Root Directory = frontend (this file), or leave root empty and use repo vercel.json + api/.',
     })
   }
 }

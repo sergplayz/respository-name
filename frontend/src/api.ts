@@ -24,8 +24,10 @@ export function friendlyFetchError(message: string): string {
     /::[a-z0-9]+-\d+-\d+[a-f0-9]+/i.test(message)
   ) {
     return (
-      'Vercel returned 404 for /api — the serverless proxy is probably not deployed. ' +
-      'Set the Vercel project Root Directory to frontend and redeploy, and ensure RENDER_API_URL is set.'
+      'Vercel returned 404 for /api — no serverless route handled the request. ' +
+      'Either set Vercel → Root Directory to frontend (so frontend/api deploys), ' +
+      'or leave Root Directory empty and deploy from the repo root (vercel.json + api/ at repo root). ' +
+      'Then set RENDER_API_URL to your Render API URL and redeploy.'
     )
   }
   try {
