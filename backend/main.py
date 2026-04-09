@@ -85,6 +85,9 @@ def human_label(table: str) -> str:
 # that had no header text in row 1 (e.g. link-only columns in the sheet). The export
 # merged real fields; first column is the padded sheet title cell but holds User rows.
 _PERSONNEL_SHEET_COL_A = "                  United States Space Force Materiel Command Database"
+_CERT_BOARD_COL_A = "                  USSF MMATCOM Database"
+# Sheet typo: double space after "United" in this tab.
+_PROGRESS_ROSTER_COL_A = "                  United  States Space Force Materiel Command Database"
 
 # Maps table name -> sqlite column name -> human-readable label (from roster layout).
 COLUMN_DISPLAY_LABELS: dict[str, dict[str, str]] = {
@@ -129,6 +132,30 @@ COLUMN_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "Unnamed: 12": "BGT",
         "Unnamed: 13": "BGT Cooldown",
         "Unnamed: 14": "Deadline",
+    },
+    "certification_board": {
+        _CERT_BOARD_COL_A: "User",
+        "Unnamed: 1": "Base Control (auto)",
+        "Unnamed: 2": "Stargate Control",
+        "Unnamed: 3": "MALP",
+        "Unnamed: 4": "Engineering",
+        "Unnamed: 5": "Notes / Suspensions",
+    },
+    "progress_roster": {
+        _PROGRESS_ROSTER_COL_A: "User",
+        "Unnamed: 1": "Status",
+        "Unnamed: 2": "Quota",
+        "Unnamed: 3": "SL (Weekly)",
+        "Unnamed: 4": "SL (Total)",
+        "Unnamed: 5": "HL (Weekly)",
+        "Unnamed: 6": "EL",
+        "Unnamed: 7": "ML",
+        "Unnamed: 8": "MP",
+        "Unnamed: 9": "SR",
+        "Unnamed: 10": "EVAC",
+        "Unnamed: 11": "C",
+        "Unnamed: 12": "Streak",
+        "Unnamed: 13": "Streak End",
     },
 }
 
