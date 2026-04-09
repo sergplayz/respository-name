@@ -9,15 +9,14 @@ import {
 } from './devLog'
 
 /**
- * Hidden entry + client-only “login”. Credentials and overrides live in the browser bundle
- * and localStorage. Not real security.
+ * Hidden entry. Admin sign-in is verified on the API (bcrypt + JWT). No passwords in the bundle
+ * or localStorage — only a short-lived bearer token in sessionStorage.
  */
-const SESSION_KEY = 'matcom_admin_session'
-const CREDS_KEY = 'matcom_admin_creds'
-const DEFAULT_USER = 'milda107'
-const DEFAULT_PASS = 'suspended'
+const TOKEN_KEY = 'matcom_admin_token'
 
-type Health = { ok?: boolean; database?: string; exists?: boolean }
+type Health = { ok?: boolean }
+
+type DbStatus = { ok?: boolean; database_reachable?: boolean }
 
 type LatencyRow = {
   label: string
@@ -27,22 +26,12 @@ type LatencyRow = {
   error?: string
 }
 
-function getEffectiveCreds(): { user: string; pass: string } {
+function getToken(): string | null {
   try {
-    const raw = localStorage.getItem(CREDS_KEY)
-    if (!raw) return { user: DEFAULT_USER, pass: DEFAULT_PASS }
-    const j = JSON.parse(raw) as { user?: unknown; pass?: unknown }
-    if (typeof j.user === 'string' && typeof j.pass === 'string') {
-      return { user: j.user, pass: j.pass }
-    }
+    return sessionStorage.getItem(TOKEN_KEY)
   } catch {
-    /* ignore */
+    return null
   }
-  return { user: DEFAULT_USER, pass: DEFAULT_PASS }
-}
-
-function usingCustomCreds(): boolean {
-  return localStorage.getItem(CREDS_KEY) !== null
 }
 
 export function AdminSecret() {
@@ -53,6 +42,7 @@ export function AdminSecret() {
   const [pass, setPass] = useState('')
   const [loginError, setLoginError] = useState('')
   const [health, setHealth] = useState<Health | null>(null)
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null)
   const [healthErr, setHealthErr] = useState<string | null>(null)
   const [loadingHealth, setLoadingHealth] = useState(false)
   const [latency, setLatency] = useState<LatencyRow[]>([])
@@ -61,14 +51,17 @@ export function AdminSecret() {
   const devLogs = useDevLogs()
   const advancedRows = useMemo(() => getClientAdvancedInfo(), [panelOpen])
 
-  const [newUser, setNewUser] = useState('')
-  const [newPass, setNewPass] = useState('')
-  const [newPass2, setNewPass2] = useState('')
-  const [credMessage, setCredMessage] = useState('')
-  const [credError, setCredError] = useState('')
-
   useEffect(() => {
-    setSession(sessionStorage.getItem(SESSION_KEY) === '1')
+    setSession(getToken() !== null)
+  }, [])
+
+  const clearAdminSession = useCallback(() => {
+    try {
+      sessionStorage.removeItem(TOKEN_KEY)
+    } catch {
+      /* ignore */
+    }
+    setSession(false)
   }, [])
 
   const loadHealth = useCallback(async () => {
@@ -78,15 +71,37 @@ export function AdminSecret() {
       const res = await fetch(apiUrl('/api/health'))
       if (!res.ok) throw new Error(await res.text())
       setHealth((await res.json()) as Health)
+
+      const token = getToken()
+      if (token) {
+        const ds = await fetch(apiUrl('/api/admin/db-status'), {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (ds.status === 401) {
+          clearAdminSession()
+          setDbStatus(null)
+          setHealthErr('Session expired. Sign in again.')
+          return
+        }
+        if (!ds.ok) {
+          setDbStatus(null)
+          const t = await ds.text()
+          throw new Error(t || `HTTP ${ds.status}`)
+        }
+        setDbStatus((await ds.json()) as DbStatus)
+      } else {
+        setDbStatus(null)
+      }
     } catch (e) {
       setHealth(null)
+      setDbStatus(null)
       const msg = e instanceof Error ? e.message : 'Request failed'
       setHealthErr(msg)
       logAppEvent('error', 'Admin: health check failed', msg)
     } finally {
       setLoadingHealth(false)
     }
-  }, [])
+  }, [clearAdminSession])
 
   const loadLatencies = useCallback(async () => {
     setLoadingLatency(true)
@@ -116,19 +131,56 @@ export function AdminSecret() {
     await timed('GET /api/health', '/api/health')
     const tablesRes = await timed('GET /api/tables', '/api/tables')
 
-    let firstTable = ''
+    const tableNames: string[] = []
     if (tablesRes?.ok) {
       try {
-        const d = (await tablesRes.json()) as { tables?: { name: string }[] }
-        firstTable = d.tables?.[0]?.name ?? ''
+        const d = (await tablesRes.clone().json()) as { tables?: { name: string }[] }
+        tableNames.push(...(d.tables?.map((t) => t.name).filter(Boolean) ?? []))
       } catch {
         /* ignore */
       }
     }
 
-    if (firstTable) {
-      const path = `/api/tables/${encodeURIComponent(firstTable)}/rows?limit=1&skip=0`
-      await timed(`GET /api/tables/{name}/rows`, path)
+    if (tableNames.length) {
+      let rowsOk = false
+      for (const name of tableNames) {
+        const path = `/api/tables/${encodeURIComponent(name)}/rows?limit=1&skip=0`
+        const t0 = performance.now()
+        try {
+          const res = await fetch(apiUrl(path))
+          const ms = Math.round(performance.now() - t0)
+          const errText = res.ok ? undefined : (await res.text()).slice(0, 160)
+          out.push({
+            label: 'GET /api/tables/{name}/rows',
+            path,
+            ms,
+            status: res.status,
+            error: errText,
+          })
+          if (res.ok) {
+            rowsOk = true
+            break
+          }
+        } catch (e) {
+          const ms = Math.round(performance.now() - t0)
+          out.push({
+            label: 'GET /api/tables/{name}/rows',
+            path,
+            ms,
+            status: null,
+            error: e instanceof Error ? e.message : 'failed',
+          })
+        }
+      }
+      if (!rowsOk && tableNames.length) {
+        out.push({
+          label: 'GET /api/tables/{name}/rows (note)',
+          path: '—',
+          ms: null,
+          status: null,
+          error: `No row endpoint succeeded; tried ${tableNames.length} table(s) from /api/tables.`,
+        })
+      }
     } else {
       out.push({
         label: 'GET /api/tables/{name}/rows',
@@ -182,62 +234,55 @@ export function AdminSecret() {
     }
   }
 
-  const submitLogin = (e: React.FormEvent) => {
+  const submitLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError('')
-    const c = getEffectiveCreds()
-    if (user === c.user && pass === c.pass) {
-      sessionStorage.setItem(SESSION_KEY, '1')
+    try {
+      const res = await fetch(apiUrl('/api/admin/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user.trim(), password: pass }),
+      })
+      const raw = await res.text()
+      if (res.status === 503) {
+        setLoginError(
+          'Server admin sign-in is not configured. Set MATCOM_ADMIN_USERNAME, MATCOM_ADMIN_PASSWORD_BCRYPT, and MATCOM_JWT_SECRET on the API.',
+        )
+        return
+      }
+      if (!res.ok) {
+        let detail = raw
+        try {
+          const j = JSON.parse(raw) as { detail?: unknown }
+          if (typeof j.detail === 'string') detail = j.detail
+        } catch {
+          /* use raw */
+        }
+        setLoginError(detail || 'Sign-in failed')
+        return
+      }
+      const data = JSON.parse(raw) as { access_token?: string }
+      if (!data.access_token) {
+        setLoginError('Invalid response from server.')
+        return
+      }
+      sessionStorage.setItem(TOKEN_KEY, data.access_token)
       setSession(true)
       setLoginOpen(false)
       setPass('')
       setPanelOpen(true)
-    } else {
-      setLoginError('Wrong username or password.')
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : 'Network error')
     }
   }
 
   const logout = () => {
-    sessionStorage.removeItem(SESSION_KEY)
-    setSession(false)
+    clearAdminSession()
     setPanelOpen(false)
     setHealth(null)
+    setDbStatus(null)
     setLatency([])
   }
-
-  const saveNewCreds = (e: React.FormEvent) => {
-    e.preventDefault()
-    setCredMessage('')
-    setCredError('')
-    if (!newUser.trim()) {
-      setCredError('Username cannot be empty.')
-      return
-    }
-    if (!newPass) {
-      setCredError('Password cannot be empty.')
-      return
-    }
-    if (newPass !== newPass2) {
-      setCredError('Passwords do not match.')
-      return
-    }
-    localStorage.setItem(CREDS_KEY, JSON.stringify({ user: newUser.trim(), pass: newPass }))
-    setCredMessage('Saved. Use this username and password the next time you sign in.')
-    setNewPass('')
-    setNewPass2('')
-  }
-
-  const resetCreds = () => {
-    localStorage.removeItem(CREDS_KEY)
-    setCredMessage('Restored built-in defaults (milda107 / suspended).')
-    setCredError('')
-    setNewUser('')
-    setNewPass('')
-    setNewPass2('')
-  }
-
-  const effective = getEffectiveCreds()
-  const custom = usingCustomCreds()
 
   return (
     <>
@@ -264,7 +309,8 @@ export function AdminSecret() {
               Sign in
             </h2>
             <p className="admin-login-hint">
-              {custom ? 'Using saved custom credentials.' : 'Using built-in defaults until you change them in the admin panel.'}
+              Use the username and password configured on the API server (environment variables), not
+              a password stored in this browser.
             </p>
             <form onSubmit={submitLogin} className="admin-form">
               <label className="admin-label">
@@ -317,8 +363,9 @@ export function AdminSecret() {
               Admin
             </h2>
             <p className="admin-panel-note">
-              Active login: <strong>{effective.user}</strong>
-              {custom ? ' (custom)' : ' (default)'} · Round-trip time in ms for each public API route.
+              Signed in with server-issued token (session only). Round-trip time in ms for each public
+              API route. If the API host was asleep (e.g. free tier), the first line can include full
+              wake time; rerun after a few seconds to see steady-state latency.
             </p>
 
             <h3 className="admin-section-title">Endpoint latency</h3>
@@ -350,7 +397,7 @@ export function AdminSecret() {
                     {latency
                       .filter((r) => r.error)
                       .map((r) => (
-                        <li key={r.label}>
+                        <li key={r.label + (r.path ?? '')}>
                           <span className="admin-k">{r.label}</span> {r.error}
                         </li>
                       ))}
@@ -376,12 +423,12 @@ export function AdminSecret() {
                   <li>
                     <span className="admin-k">ok</span> {String(health.ok)}
                   </li>
-                  <li>
-                    <span className="admin-k">database path</span> {health.database ?? '—'}
-                  </li>
-                  <li>
-                    <span className="admin-k">file exists</span> {String(health.exists)}
-                  </li>
+                  {dbStatus && (
+                    <li>
+                      <span className="admin-k">database reachable</span>{' '}
+                      {String(dbStatus.database_reachable)}
+                    </li>
+                  )}
                 </ul>
               )}
               <button type="button" className="btn secondary" onClick={() => void loadHealth()}>
@@ -455,52 +502,6 @@ export function AdminSecret() {
                 </div>
               ))}
             </dl>
-
-            <h3 className="admin-section-title">Change login</h3>
-            <p className="admin-panel-note">
-              Stored in this browser only (localStorage). Reset returns to milda107 / suspended.
-            </p>
-            <form onSubmit={saveNewCreds} className="admin-form">
-              <label className="admin-label">
-                New username
-                <input
-                  className="admin-input"
-                  value={newUser}
-                  onChange={(e) => setNewUser(e.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="admin-label">
-                New password
-                <input
-                  className="admin-input"
-                  type="password"
-                  value={newPass}
-                  onChange={(e) => setNewPass(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
-              <label className="admin-label">
-                Confirm password
-                <input
-                  className="admin-input"
-                  type="password"
-                  value={newPass2}
-                  onChange={(e) => setNewPass2(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
-              {credError && <p className="admin-login-error">{credError}</p>}
-              {credMessage && <p className="admin-cred-ok">{credMessage}</p>}
-              <div className="admin-modal-actions admin-modal-actions-left">
-                <button type="submit" className="btn">
-                  Save credentials
-                </button>
-                <button type="button" className="btn secondary" onClick={resetCreds}>
-                  Reset to defaults
-                </button>
-              </div>
-            </form>
 
             <div className="admin-modal-actions admin-modal-footer">
               <button type="button" className="btn secondary" onClick={logout}>
