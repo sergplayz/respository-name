@@ -55,6 +55,20 @@ export function AdminSecret() {
     setSession(getToken() !== null)
   }, [])
 
+  /** Deep link: /admin loads the app then opens sign-in or the panel (Vercel needs SPA rewrites). */
+  useEffect(() => {
+    const path = window.location.pathname.replace(/\/$/, '') || '/'
+    if (path !== '/admin') return
+    const tok = getToken()
+    if (tok) {
+      setSession(true)
+      setPanelOpen(true)
+    } else {
+      setLoginOpen(true)
+    }
+    window.history.replaceState(null, '', '/')
+  }, [])
+
   const clearAdminSession = useCallback(() => {
     try {
       sessionStorage.removeItem(TOKEN_KEY)

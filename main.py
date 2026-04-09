@@ -9,9 +9,13 @@ from __future__ import annotations
 try:
     from backend.main import app
 except ModuleNotFoundError as e:  # pragma: no cover
+    # Do not swallow missing third-party deps (jwt, bcrypt, slowapi, …) from backend.main.
+    if getattr(e, "name", None) not in ("backend", "backend.main"):
+        raise
     raise ModuleNotFoundError(
-        "Could not import backend.main. Deploy from the repository root (folder that "
-        "contains both main.py and the backend/ package), not from inside backend/ alone."
+        "Could not import backend.main. Use repository root (must include the backend/ "
+        "folder), or set Render Root Directory to backend and start with: "
+        "python -m uvicorn main:app"
     ) from e
 
 __all__ = ["app"]
