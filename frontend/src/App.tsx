@@ -204,7 +204,15 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <h1>MATCOM Lookup</h1>
-          <p>Browse and search your SQLite export (rosters, personnel, reference).</p>
+          <p>
+            Pick a table on the left to load it here. The search field under the sheet name filters what
+            you see and looks at every column on that table only. If the list is long, use Previous and
+            Next at the bottom.
+          </p>
+          <p>
+            Want to scan everything at once? Switch to the Search all tab, then use the box on the
+            right.
+          </p>
         </div>
         <div className="nav-tabs">
           <button
@@ -245,7 +253,7 @@ export default function App() {
         )}
         {view === 'search' && (
           <p className="hint" style={{ margin: 0 }}>
-            Search runs across every column in every table. Use the main panel to run a query.
+            Click search all and type in your EXACT username.
           </p>
         )}
       </aside>

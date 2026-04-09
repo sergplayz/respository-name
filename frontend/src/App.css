@@ -49,6 +49,10 @@
   line-height: 1.35;
 }
 
+.brand p + p {
+  margin-top: 0.5rem;
+}
+
 .nav-tabs {
   display: flex;
   gap: 0.35rem;
