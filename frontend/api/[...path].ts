@@ -58,51 +58,51 @@ function json(res: VercelResponse, status: number, body: unknown) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const resolved = readBackendBase()
-    if (!resolved.ok) {
+    if (resolved.ok) {
+      const { base } = resolved
+
+      const url = new URL(req.url || '/', 'http://localhost')
+      const m = url.pathname.match(/^\/api(?:\/(.*))?$/i)
+      const apiPath = m?.[1] ? decodeURIComponent(m[1]) : ''
+      const target = `${base}/api/${apiPath}${url.search}`
+
+      const headers = new Headers()
+      headers.set('user-agent', 'matcom-vercel-proxy/1.0')
+      const allow = ['accept', 'accept-language', 'content-type', 'authorization']
+      for (const name of allow) {
+        const v = req.headers[name]
+        if (v == null) continue
+        headers.set(name, Array.isArray(v) ? v[0] : v)
+      }
+
+      let body: string | undefined
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        if (typeof req.body === 'string') body = req.body
+        else if (Buffer.isBuffer(req.body)) body = req.body.toString('utf8')
+        else if (req.body != null) body = JSON.stringify(req.body)
+      }
+
+      const upstream = await fetch(target, {
+        method: req.method,
+        headers,
+        body,
+      })
+
+      res.status(upstream.status)
+      upstream.headers.forEach((value, key) => {
+        if (STRIP_FROM_CLIENT.has(key.toLowerCase())) return
+        res.setHeader(key, value)
+      })
+
+      const buf = Buffer.from(await upstream.arrayBuffer())
+      res.send(buf)
+    } else {
       json(res, 503, {
         error: resolved.reason,
         status: 503,
         checked_env_keys: [...ENV_KEYS],
       })
-      return
     }
-    const { base } = resolved
-
-    const url = new URL(req.url || '/', 'http://localhost')
-    const m = url.pathname.match(/^\/api(?:\/(.*))?$/i)
-    const apiPath = m?.[1] ? decodeURIComponent(m[1]) : ''
-    const target = `${base}/api/${apiPath}${url.search}`
-
-    const headers = new Headers()
-    headers.set('user-agent', 'matcom-vercel-proxy/1.0')
-    const allow = ['accept', 'accept-language', 'content-type', 'authorization']
-    for (const name of allow) {
-      const v = req.headers[name]
-      if (v == null) continue
-      headers.set(name, Array.isArray(v) ? v[0] : v)
-    }
-
-    let body: string | undefined
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      if (typeof req.body === 'string') body = req.body
-      else if (Buffer.isBuffer(req.body)) body = req.body.toString('utf8')
-      else if (req.body != null) body = JSON.stringify(req.body)
-    }
-
-    const upstream = await fetch(target, {
-      method: req.method,
-      headers,
-      body,
-    })
-
-    res.status(upstream.status)
-    upstream.headers.forEach((value, key) => {
-      if (STRIP_FROM_CLIENT.has(key.toLowerCase())) return
-      res.setHeader(key, value)
-    })
-
-    const buf = Buffer.from(await upstream.arrayBuffer())
-    res.send(buf)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     json(res, 502, {
