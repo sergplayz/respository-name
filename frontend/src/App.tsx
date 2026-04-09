@@ -210,8 +210,8 @@ export default function App() {
             Next at the bottom.
           </p>
           <p>
-            Want to scan everything at once? Switch to the Search all tab, then use the box on the
-            right.
+            Want to scan everything at once? Click Search all, then type your EXACT username in the box
+            on the right.
           </p>
         </div>
         <div className="nav-tabs">
@@ -250,11 +250,6 @@ export default function App() {
               ))}
             </ul>
           </>
-        )}
-        {view === 'search' && (
-          <p className="hint" style={{ margin: 0 }}>
-            Click search all and type in your EXACT username.
-          </p>
         )}
       </aside>
 
