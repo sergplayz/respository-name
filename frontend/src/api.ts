@@ -7,8 +7,40 @@ export function apiUrl(path: string): string {
   return p
 }
 
+/** Read JSON from a fetch Response; detect HTML (SPA fallback / 404 page) and throw a clear error. */
+export async function readApiJson<T>(res: Response): Promise<T> {
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(text || `HTTP ${res.status}`)
+  }
+  const head = text.trimStart().slice(0, 64).toLowerCase()
+  if (head.startsWith('<!') || head.startsWith('<html')) {
+    throw new Error(
+      'API_HTML_NOT_JSON: The server returned the web app page instead of JSON for /api. ' +
+        'Redeploy the site with the latest vercel.json (filesystem handle before SPA fallback). ' +
+        'Confirm Vercel Root Directory includes the api/ folder and RENDER_API_URL is set.',
+    )
+  }
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(
+      text.includes('<!doctype') || text.includes('<html')
+        ? 'API_HTML_NOT_JSON'
+        : text.slice(0, 240) || 'Invalid JSON from API',
+    )
+  }
+}
+
 export function friendlyFetchError(message: string): string {
   const m = message.toLowerCase()
+  if (m.includes('api_html_not_json') || m.includes('unexpected token') || m.includes('<!doctype')) {
+    return (
+      'The app expected JSON from /api but got an HTML page (usually your Vercel SPA). ' +
+        'Fix: push the latest vercel.json, redeploy Vercel, and set Root Directory to frontend (or repo root with root api/). ' +
+        'Set RENDER_API_URL to your Render API. In DevTools → Network, /api/tables should be JSON, not index.html.'
+    )
+  }
   if (m === 'failed to fetch' || m.includes('networkerror') || m.includes('load failed')) {
     return (
       'Network error talking to this site’s /api route. Common fixes: (1) In Vercel → Settings → General, ' +

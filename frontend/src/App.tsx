@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiUrl, friendlyFetchError } from './api'
+import { apiUrl, friendlyFetchError, readApiJson } from './api'
 import { logAppEvent } from './devLog'
 import type { ColumnInfo, TableSummary } from './matcomTypes'
 import { fetchTablesOnce } from './tablesClient'
@@ -155,8 +155,7 @@ export default function App() {
         const res = await fetch(
           apiUrl(`/api/tables/${encodeURIComponent(selected)}/rows?${params}`),
         )
-        if (!res.ok) throw new Error(await res.text())
-        const data = (await res.json()) as RowsResponse
+        const data = await readApiJson<RowsResponse>(res)
         if (!cancelled) setRowsData(data)
       } catch (e) {
         if (!cancelled) {
@@ -183,8 +182,7 @@ export default function App() {
     try {
       const params = new URLSearchParams({ q, per_table: '12' })
       const res = await fetch(apiUrl(`/api/search?${params}`))
-      if (!res.ok) throw new Error(await res.text())
-      const data = (await res.json()) as SearchResponse
+      const data = await readApiJson<SearchResponse>(res)
       setGlobalResult(data)
     } catch (e) {
       setGlobalResult(null)

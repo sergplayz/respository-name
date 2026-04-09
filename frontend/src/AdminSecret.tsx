@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiUrl } from './api'
+import { apiUrl, readApiJson } from './api'
 import {
   clearDevLogs,
   devLogsToText,
@@ -83,8 +83,7 @@ export function AdminSecret() {
     setHealthErr(null)
     try {
       const res = await fetch(apiUrl('/api/health'))
-      if (!res.ok) throw new Error(await res.text())
-      setHealth((await res.json()) as Health)
+      setHealth(await readApiJson<Health>(res))
 
       const token = getToken()
       if (token) {
@@ -97,12 +96,7 @@ export function AdminSecret() {
           setHealthErr('Session expired. Sign in again.')
           return
         }
-        if (!ds.ok) {
-          setDbStatus(null)
-          const t = await ds.text()
-          throw new Error(t || `HTTP ${ds.status}`)
-        }
-        setDbStatus((await ds.json()) as DbStatus)
+        setDbStatus(await readApiJson<DbStatus>(ds))
       } else {
         setDbStatus(null)
       }
