@@ -1,22 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiUrl, friendlyFetchError } from './api'
+import type { ColumnInfo, TableSummary } from './matcomTypes'
+import { fetchTablesOnce } from './tablesClient'
 import './App.css'
-
-type ColumnInfo = {
-  cid: number
-  name: string
-  type: string
-  pk: boolean
-  /** Friendly label when the API knows the spreadsheet header */
-  displayName?: string
-}
-
-type TableSummary = {
-  name: string
-  label: string
-  rowCount: number
-  columns: ColumnInfo[]
-}
 
 type RowsResponse = {
   table: string
@@ -129,12 +115,10 @@ export default function App() {
     ;(async () => {
       setTablesError(null)
       try {
-        const res = await fetch(apiUrl('/api/tables'))
-        if (!res.ok) throw new Error(await res.text())
-        const data = (await res.json()) as { tables: TableSummary[] }
+        const tables = await fetchTablesOnce()
         if (cancelled) return
-        setTables(data.tables)
-        setSelected((prev) => prev ?? data.tables[0]?.name ?? null)
+        setTables(tables)
+        setSelected((prev) => prev ?? tables[0]?.name ?? null)
       } catch (e) {
         if (!cancelled) {
           const msg = e instanceof Error ? e.message : 'Failed to load tables'

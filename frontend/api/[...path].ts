@@ -2,9 +2,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 /**
  * Proxies same-origin `/api/*` → Render FastAPI.
- * Vercel env: RENDER_API_URL = https://your-service.onrender.com (no trailing slash).
+ * Set one of: RENDER_API_URL, MATCOM_API_URL (no trailing slash; include https://).
  *
- * Important: Vercel project "Root Directory" must be `frontend` (this folder), or `api/` is not deployed.
+ * Vercel project Root Directory must be `frontend` so this `api/` folder deploys.
  */
 
 const HOP_BY_HOP = new Set([
@@ -18,12 +18,37 @@ const HOP_BY_HOP = new Set([
   'upgrade',
 ])
 
-// fetch() decompresses the body; forwarding Content-Encoding breaks clients.
 const STRIP_FROM_CLIENT = new Set([
   ...HOP_BY_HOP,
   'content-encoding',
   'content-length',
 ])
+
+const ENV_KEYS = [
+  'RENDER_API_URL',
+  'MATCOM_API_URL',
+  'VITE_API_URL',
+] as const
+
+function readBackendBase(): { ok: true; base: string } | { ok: false; reason: string } {
+  for (const key of ENV_KEYS) {
+    let raw = process.env[key]?.trim() ?? ''
+    raw = raw.replace(/^['"]+|['"]+$/g, '')
+    if (!raw) continue
+    try {
+      const u = new URL(raw.startsWith('http') ? raw : `https://${raw}`)
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') continue
+      return { ok: true, base: `${u.protocol}//${u.host}` }
+    } catch {
+      continue
+    }
+  }
+  return {
+    ok: false,
+    reason:
+      'No backend URL in environment. Add RENDER_API_URL (or MATCOM_API_URL) in Vercel → Environment Variables for Production and Preview, then redeploy.',
+  }
+}
 
 function json(res: VercelResponse, status: number, body: unknown) {
   res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -32,27 +57,16 @@ function json(res: VercelResponse, status: number, body: unknown) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const raw = process.env.RENDER_API_URL?.trim() ?? ''
-    if (!raw) {
+    const resolved = readBackendBase()
+    if (!resolved.ok) {
       json(res, 503, {
-        error:
-          'RENDER_API_URL is not set on Vercel. Add it under Environment Variables (Production + Preview).',
+        error: resolved.reason,
+        status: 503,
+        checked_env_keys: [...ENV_KEYS],
       })
       return
     }
-
-    let base: string
-    try {
-      const u = new URL(raw.startsWith('http') ? raw : `https://${raw}`)
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        json(res, 503, { error: 'RENDER_API_URL must start with http:// or https://' })
-        return
-      }
-      base = `${u.protocol}//${u.host}`
-    } catch {
-      json(res, 503, { error: 'RENDER_API_URL is not a valid URL.' })
-      return
-    }
+    const { base } = resolved
 
     const url = new URL(req.url || '/', 'http://localhost')
     const m = url.pathname.match(/^\/api(?:\/(.*))?$/i)
@@ -60,10 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const target = `${base}/api/${apiPath}${url.search}`
 
     const headers = new Headers()
-    headers.set(
-      'user-agent',
-      'matcom-vercel-proxy/1.0 (serverless; contact: your-team)',
-    )
+    headers.set('user-agent', 'matcom-vercel-proxy/1.0')
     const allow = ['accept', 'accept-language', 'content-type', 'authorization']
     for (const name of allow) {
       const v = req.headers[name]
@@ -98,7 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       error: 'Proxy could not reach your Render API.',
       detail: message,
       hint:
-        'Confirm RENDER_API_URL, that Render is awake (free tier sleeps — wait and retry), and that your Vercel project Root Directory is `frontend` so this function is deployed.',
+        'Check RENDER_API_URL, wake Render (free tier sleeps), and Vercel Root Directory = frontend.',
     })
   }
 }

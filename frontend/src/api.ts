@@ -28,6 +28,19 @@ export function friendlyFetchError(message: string): string {
       'Set the Vercel project Root Directory to frontend and redeploy, and ensure RENDER_API_URL is set.'
     )
   }
+  try {
+    const j = JSON.parse(message) as { error?: string; hint?: string; checked_env_keys?: string[] }
+    if (j.error) {
+      let s = j.error
+      if (j.checked_env_keys?.length) {
+        s += ` (looked for: ${j.checked_env_keys.join(', ')})`
+      }
+      if (j.hint) s += ` ${j.hint}`
+      return s
+    }
+  } catch {
+    /* not JSON */
+  }
   if (message.includes('RENDER_API_URL') || message.includes('Proxy could not reach')) {
     return message.length > 600 ? `${message.slice(0, 600)}…` : message
   }
