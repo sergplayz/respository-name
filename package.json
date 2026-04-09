@@ -1,0 +1,8 @@
+{
+  "name": "matcom",
+  "private": true,
+  "description": "Root package for Vercel when Project Root = repository (api/ + vercel.json live here).",
+  "devDependencies": {
+    "@vercel/node": "^5.7.2"
+  }
+}
