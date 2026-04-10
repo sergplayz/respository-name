@@ -3,7 +3,6 @@ import { matcomProxyHandler } from './matcomProxyShared'
 
 /**
  * Proxies same-origin `/api/*` → Render FastAPI.
- * Admin auth uses flat `/api/matcom-login` and `/api/matcom-db-status` (see sibling files).
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const url = new URL(req.url || '/', 'http://localhost')
