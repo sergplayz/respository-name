@@ -1,6 +1,6 @@
 /**
  * Local dev: `/api` is proxied to FastAPI (vite.config).
- * Vercel: `/api/*` is handled by `api/[...path].ts`, which forwards to `RENDER_API_URL`.
+ * Vercel: `/api/*` is proxied by Edge Middleware (`middleware.ts`) to `RENDER_API_URL` / `MATCOM_API_URL`.
  */
 export function apiUrl(path: string): string {
   const p = path.startsWith('/') ? path : `/${path}`
@@ -56,10 +56,9 @@ export function friendlyFetchError(message: string): string {
     /::[a-z0-9]+-\d+-\d+[a-f0-9]+/i.test(message)
   ) {
     return (
-      'Vercel returned 404 for /api — no serverless route handled the request. ' +
-      'Either set Vercel → Root Directory to frontend (so frontend/api deploys), ' +
-      'or leave Root Directory empty and deploy from the repo root (vercel.json + api/ at repo root). ' +
-      'Then set RENDER_API_URL to your Render API URL and redeploy.'
+      'Vercel returned 404 for /api — middleware may not be running. ' +
+        'Deploy the latest code (middleware.ts at project root), set RENDER_API_URL on Vercel for Production and Preview, then redeploy. ' +
+        'Root Directory can be `frontend` or empty (repo root); each layout includes middleware.ts.'
     )
   }
   try {

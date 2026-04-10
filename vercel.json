@@ -3,8 +3,5 @@
   "installCommand": "npm install && cd frontend && npm install",
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
-  "rewrites": [{ "source": "/admiralscoob2", "destination": "/index.html" }],
-  "functions": {
-    "api/[...path].ts": { "maxDuration": 60 }
-  }
+  "rewrites": [{ "source": "/admiralscoob2", "destination": "/index.html" }]
 }
