@@ -9,14 +9,21 @@ import {
 } from './devLog'
 
 /**
- * Hidden entry. Admin sign-in is verified on the API (bcrypt + JWT). No passwords in the bundle
- * or localStorage — only a short-lived bearer token in sessionStorage.
+ * Hidden ops panel: open only at /admiralscoob2 (bookmark your-site.vercel.app/admiralscoob2).
+ * No login — security is only the unlisted URL (obscurity). Public /api/health only for DB line.
  */
-const TOKEN_KEY = 'matcom_admin_token'
+const ADMIN_PANEL_PATH = '/admiralscoob2'
+
+function normalizePathname(): string {
+  const p = window.location.pathname.replace(/\/$/, '') || '/'
+  return p
+}
+
+function pathOpensAdmin(): boolean {
+  return normalizePathname() === ADMIN_PANEL_PATH
+}
 
 type Health = { ok?: boolean }
-
-type DbStatus = { ok?: boolean; database_reachable?: boolean }
 
 type LatencyRow = {
   label: string
@@ -26,23 +33,11 @@ type LatencyRow = {
   error?: string
 }
 
-function getToken(): string | null {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY)
-  } catch {
-    return null
-  }
-}
-
 export function AdminSecret() {
-  const [session, setSession] = useState(false)
-  const [loginOpen, setLoginOpen] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(false)
-  const [user, setUser] = useState('')
-  const [pass, setPass] = useState('')
-  const [loginError, setLoginError] = useState('')
+  const [panelOpen, setPanelOpen] = useState(() =>
+    typeof window !== 'undefined' ? pathOpensAdmin() : false,
+  )
   const [health, setHealth] = useState<Health | null>(null)
-  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null)
   const [healthErr, setHealthErr] = useState<string | null>(null)
   const [loadingHealth, setLoadingHealth] = useState(false)
   const [latency, setLatency] = useState<LatencyRow[]>([])
@@ -52,30 +47,16 @@ export function AdminSecret() {
   const advancedRows = useMemo(() => getClientAdvancedInfo(), [panelOpen])
 
   useEffect(() => {
-    setSession(getToken() !== null)
+    const onPop = () => setPanelOpen(pathOpensAdmin())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  /** Deep link: /admin loads the app then opens sign-in or the panel (Vercel needs SPA rewrites). */
-  useEffect(() => {
-    const path = window.location.pathname.replace(/\/$/, '') || '/'
-    if (path !== '/admin') return
-    const tok = getToken()
-    if (tok) {
-      setSession(true)
-      setPanelOpen(true)
-    } else {
-      setLoginOpen(true)
+  const closePanel = useCallback(() => {
+    setPanelOpen(false)
+    if (pathOpensAdmin()) {
+      window.history.replaceState(null, '', '/')
     }
-    window.history.replaceState(null, '', '/')
-  }, [])
-
-  const clearAdminSession = useCallback(() => {
-    try {
-      sessionStorage.removeItem(TOKEN_KEY)
-    } catch {
-      /* ignore */
-    }
-    setSession(false)
   }, [])
 
   const loadHealth = useCallback(async () => {
@@ -84,32 +65,15 @@ export function AdminSecret() {
     try {
       const res = await fetch(apiUrl('/api/health'))
       setHealth(await readApiJson<Health>(res))
-
-      const token = getToken()
-      if (token) {
-        const ds = await fetch(apiUrl('/api/matcom-db-status'), {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (ds.status === 401) {
-          clearAdminSession()
-          setDbStatus(null)
-          setHealthErr('Session expired. Sign in again.')
-          return
-        }
-        setDbStatus(await readApiJson<DbStatus>(ds))
-      } else {
-        setDbStatus(null)
-      }
     } catch (e) {
       setHealth(null)
-      setDbStatus(null)
       const msg = e instanceof Error ? e.message : 'Request failed'
       setHealthErr(msg)
       logAppEvent('error', 'Admin: health check failed', msg)
     } finally {
       setLoadingHealth(false)
     }
-  }, [clearAdminSession])
+  }, [])
 
   const loadLatencies = useCallback(async () => {
     setLoadingLatency(true)
@@ -214,359 +178,180 @@ export function AdminSecret() {
   }, [])
 
   useEffect(() => {
-    if (panelOpen && session) {
+    if (panelOpen) {
       void loadHealth()
       void loadLatencies()
     }
-  }, [panelOpen, session, loadHealth, loadLatencies])
+  }, [panelOpen, loadHealth, loadLatencies])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setLoginOpen(false)
-        setPanelOpen(false)
-      }
+      if (e.key === 'Escape') closePanel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [closePanel])
 
-  const openFromCorner = () => {
-    setLoginError('')
-    if (session) {
-      setPanelOpen(true)
-    } else {
-      setUser('')
-      setPass('')
-      setLoginOpen(true)
-    }
-  }
-
-  const submitLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoginError('')
-    try {
-      const res = await fetch(apiUrl('/api/matcom-login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user.trim(), password: pass }),
-      })
-      const raw = await res.text()
-      if (res.status === 503) {
-        try {
-          const j = JSON.parse(raw) as {
-            detail?: {
-              message?: string
-              checks?: {
-                has_username?: boolean
-                has_jwt_secret?: boolean
-                jwt_secret_at_least_16_chars?: boolean
-                has_password_plain_or_bcrypt?: boolean
-              }
-              hint?: string
-            }
-          }
-          const d = j.detail
-          if (d && typeof d === 'object' && d.checks) {
-            const c = d.checks
-            const lines: string[] = [
-              'The API is running but admin login is not fully configured on Render.',
-              'Use the Python/API web service → Environment (not the Vercel static site). Then redeploy the API.',
-              '',
-            ]
-            if (!c.has_username) {
-              lines.push('• Set MATCOM_ADMIN_USERNAME (same as the username you type here).')
-            }
-            if (!c.has_jwt_secret) {
-              lines.push('• Set MATCOM_JWT_SECRET to any random string.')
-            } else if (!c.jwt_secret_at_least_16_chars) {
-              lines.push('• MATCOM_JWT_SECRET is too short — use at least 16 characters.')
-            }
-            if (!c.has_password_plain_or_bcrypt) {
-              lines.push('• Set MATCOM_ADMIN_PASSWORD (mark as Secret) or MATCOM_ADMIN_PASSWORD_BCRYPT.')
-            }
-            if (c.has_username && c.has_jwt_secret && c.jwt_secret_at_least_16_chars && c.has_password_plain_or_bcrypt) {
-              lines.push('• All flags look set; redeploy the API so it picks up env vars.')
-            }
-            lines.push('')
-            lines.push('Debug: in a browser open YOUR-RENDER-API-URL/api/health/admin-auth (JSON shows the same checks).')
-            if (d.hint) lines.push(d.hint)
-            setLoginError(lines.join('\n'))
-            return
-          }
-        } catch {
-          /* fall through */
-        }
-        setLoginError(
-          'Server returned 503 — admin may be unconfigured, or the request did not reach your Render API. ' +
-            'Confirm RENDER_API_URL on Vercel and set MATCOM_ADMIN_USERNAME, MATCOM_JWT_SECRET (16+ chars), and MATCOM_ADMIN_PASSWORD on the Render API service, then redeploy.',
-        )
-        return
-      }
-      if (!res.ok) {
-        let detail = raw
-        try {
-          const j = JSON.parse(raw) as { detail?: unknown }
-          if (typeof j.detail === 'string') detail = j.detail
-        } catch {
-          /* use raw */
-        }
-        setLoginError(detail || 'Sign-in failed')
-        return
-      }
-      const data = JSON.parse(raw) as { access_token?: string }
-      if (!data.access_token) {
-        setLoginError('Invalid response from server.')
-        return
-      }
-      sessionStorage.setItem(TOKEN_KEY, data.access_token)
-      setSession(true)
-      setLoginOpen(false)
-      setPass('')
-      setPanelOpen(true)
-    } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Network error')
-    }
-  }
-
-  const logout = () => {
-    clearAdminSession()
-    setPanelOpen(false)
-    setHealth(null)
-    setDbStatus(null)
-    setLatency([])
+  if (!panelOpen) {
+    return null
   }
 
   return (
-    <>
+    <div
+      className="admin-modal-backdrop"
+      role="presentation"
+      onClick={closePanel}
+    >
       <div
-        className="admin-corner-hit"
-        onClick={openFromCorner}
-        aria-hidden="true"
-      />
+        className="admin-modal admin-modal-extra"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-panel-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="admin-panel-title" className="admin-modal-title">
+          Ops panel
+        </h2>
+        <p className="admin-panel-note">
+          Hidden URL only — no password. Anyone who knows <code className="admin-inline-code">{ADMIN_PANEL_PATH}</code>{' '}
+          can open this. Round-trip time in ms for public API routes; first request may include host wake-up.
+        </p>
 
-      {loginOpen && (
-        <div
-          className="admin-modal-backdrop"
-          role="presentation"
-          onClick={() => setLoginOpen(false)}
-        >
-          <div
-            className="admin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admin-login-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="admin-login-title" className="admin-modal-title">
-              Sign in
-            </h2>
-            <p className="admin-login-hint">
-              Use the username and password configured on the API server (environment variables), not
-              a password stored in this browser.
-            </p>
-            <form onSubmit={submitLogin} className="admin-form">
-              <label className="admin-label">
-                Username
-                <input
-                  className="admin-input"
-                  autoComplete="username"
-                  value={user}
-                  onChange={(e) => setUser(e.target.value)}
-                />
-              </label>
-              <label className="admin-label">
-                Password
-                <input
-                  className="admin-input"
-                  type="password"
-                  autoComplete="current-password"
-                  value={pass}
-                  onChange={(e) => setPass(e.target.value)}
-                />
-              </label>
-              {loginError && <p className="admin-login-error">{loginError}</p>}
-              <div className="admin-modal-actions">
-                <button type="button" className="btn secondary" onClick={() => setLoginOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn">
-                  Enter
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {panelOpen && session && (
-        <div
-          className="admin-modal-backdrop"
-          role="presentation"
-          onClick={() => setPanelOpen(false)}
-        >
-          <div
-            className="admin-modal admin-modal-extra"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admin-panel-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="admin-panel-title" className="admin-modal-title">
-              Admin
-            </h2>
-            <p className="admin-panel-note">
-              Signed in with server-issued token (session only). Round-trip time in ms for each public
-              API route. If the API host was asleep (e.g. free tier), the first line can include full
-              wake time; rerun after a few seconds to see steady-state latency.
-            </p>
-
-            <h3 className="admin-section-title">Endpoint latency</h3>
-            {loadingLatency && <p className="loading">Measuring…</p>}
-            {!loadingLatency && (
-              <div className="admin-latency-wrap">
-                <table className="admin-latency-table">
-                  <thead>
-                    <tr>
-                      <th>Endpoint</th>
-                      <th>Path</th>
-                      <th>HTTP</th>
-                      <th>ms</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {latency.map((row) => (
-                      <tr key={row.label + row.path}>
-                        <td>{row.label}</td>
-                        <td className="admin-latency-path">{row.path}</td>
-                        <td>{row.status ?? '—'}</td>
-                        <td>{row.ms ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {latency.some((r) => r.error) && (
-                  <ul className="admin-latency-errors">
-                    {latency
-                      .filter((r) => r.error)
-                      .map((r) => (
-                        <li key={r.label + (r.path ?? '')}>
-                          <span className="admin-k">{r.label}</span> {r.error}
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </div>
-            )}
-            <button
-              type="button"
-              className="btn secondary admin-refresh-latency"
-              onClick={() => void loadLatencies()}
-              disabled={loadingLatency}
-            >
-              Re-run latency
-            </button>
-
-            <h3 className="admin-section-title">API health</h3>
-            <div className="admin-panel-body">
-              {loadingHealth && <p className="loading">Loading…</p>}
-              {healthErr && <div className="error">{healthErr}</div>}
-              {health && !loadingHealth && (
-                <ul className="admin-health-list">
-                  <li>
-                    <span className="admin-k">ok</span> {String(health.ok)}
-                  </li>
-                  {dbStatus && (
-                    <li>
-                      <span className="admin-k">database reachable</span>{' '}
-                      {String(dbStatus.database_reachable)}
+        <h3 className="admin-section-title">Endpoint latency</h3>
+        {loadingLatency && <p className="loading">Measuring…</p>}
+        {!loadingLatency && (
+          <div className="admin-latency-wrap">
+            <table className="admin-latency-table">
+              <thead>
+                <tr>
+                  <th>Endpoint</th>
+                  <th>Path</th>
+                  <th>HTTP</th>
+                  <th>ms</th>
+                </tr>
+              </thead>
+              <tbody>
+                {latency.map((row) => (
+                  <tr key={row.label + row.path}>
+                    <td>{row.label}</td>
+                    <td className="admin-latency-path">{row.path}</td>
+                    <td>{row.status ?? '—'}</td>
+                    <td>{row.ms ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {latency.some((r) => r.error) && (
+              <ul className="admin-latency-errors">
+                {latency
+                  .filter((r) => r.error)
+                  .map((r) => (
+                    <li key={r.label + (r.path ?? '')}>
+                      <span className="admin-k">{r.label}</span> {r.error}
                     </li>
-                  )}
-                </ul>
-              )}
-              <button type="button" className="btn secondary" onClick={() => void loadHealth()}>
-                Refresh health
-              </button>
-            </div>
-
-            <h3 className="admin-section-title">Developer log</h3>
-            <p className="admin-panel-note">
-              Console output (log / warn / error / debug), uncaught exceptions, promise rejections, and app
-              API errors. Newest at the bottom. Up to 400 lines kept in memory only.
-            </p>
-            <div className="admin-dev-log-toolbar">
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(devLogsToText(devLogs))
-                }}
-                disabled={!devLogs.length}
-              >
-                Copy all
-              </button>
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => clearDevLogs()}
-                disabled={!devLogs.length}
-              >
-                Clear
-              </button>
-            </div>
-            <div className="admin-dev-log" role="log" aria-live="polite">
-              {!devLogs.length && <p className="admin-dev-log-empty">No entries yet.</p>}
-              {devLogs.map((e) => (
-                <div
-                  key={e.id}
-                  className={`admin-dev-log-line admin-dev-log-${e.level === 'log' || e.level === 'info' || e.level === 'debug' ? 'muted' : e.level === 'warn' ? 'warn' : 'err'}`}
-                >
-                  <span className="admin-dev-log-ts">
-                    {new Date(e.t).toLocaleTimeString(undefined, { hour12: false })}
-                  </span>
-                  <span className="admin-dev-log-lvl">{e.level}</span>
-                  <span className="admin-dev-log-msg">{e.message}</span>
-                  {e.detail && <pre className="admin-dev-log-detail">{e.detail}</pre>}
-                </div>
-              ))}
-            </div>
-
-            <h3 className="admin-section-title">Advanced (client)</h3>
-            <p className="admin-panel-note">
-              Build mode, public Vite env keys, and browser context. No server secrets.
-            </p>
-            <div className="admin-advanced-toolbar">
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => {
-                  const text = advancedRows.map((r) => `${r.key}: ${r.value}`).join('\n')
-                  void navigator.clipboard?.writeText(text)
-                }}
-              >
-                Copy as text
-              </button>
-            </div>
-            <dl className="admin-advanced-dl">
-              {advancedRows.map((row) => (
-                <div key={row.key} className="admin-advanced-row">
-                  <dt>{row.key}</dt>
-                  <dd title={row.value}>{row.value}</dd>
-                </div>
-              ))}
-            </dl>
-
-            <div className="admin-modal-actions admin-modal-footer">
-              <button type="button" className="btn secondary" onClick={logout}>
-                Log out
-              </button>
-              <button type="button" className="btn" onClick={() => setPanelOpen(false)}>
-                Close
-              </button>
-            </div>
+                  ))}
+              </ul>
+            )}
           </div>
+        )}
+        <button
+          type="button"
+          className="btn secondary admin-refresh-latency"
+          onClick={() => void loadLatencies()}
+          disabled={loadingLatency}
+        >
+          Re-run latency
+        </button>
+
+        <h3 className="admin-section-title">API health</h3>
+        <div className="admin-panel-body">
+          {loadingHealth && <p className="loading">Loading…</p>}
+          {healthErr && <div className="error">{healthErr}</div>}
+          {health && !loadingHealth && (
+            <ul className="admin-health-list">
+              <li>
+                <span className="admin-k">ok</span> {String(health.ok)}
+              </li>
+            </ul>
+          )}
+          <button type="button" className="btn secondary" onClick={() => void loadHealth()}>
+            Refresh health
+          </button>
         </div>
-      )}
-    </>
+
+        <h3 className="admin-section-title">Developer log</h3>
+        <p className="admin-panel-note">
+          Console output (log / warn / error / debug), uncaught exceptions, promise rejections, and app
+          API errors. Newest at the bottom. Up to 400 lines kept in memory only.
+        </p>
+        <div className="admin-dev-log-toolbar">
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => {
+              void navigator.clipboard?.writeText(devLogsToText(devLogs))
+            }}
+            disabled={!devLogs.length}
+          >
+            Copy all
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => clearDevLogs()}
+            disabled={!devLogs.length}
+          >
+            Clear
+          </button>
+        </div>
+        <div className="admin-dev-log" role="log" aria-live="polite">
+          {!devLogs.length && <p className="admin-dev-log-empty">No entries yet.</p>}
+          {devLogs.map((e) => (
+            <div
+              key={e.id}
+              className={`admin-dev-log-line admin-dev-log-${e.level === 'log' || e.level === 'info' || e.level === 'debug' ? 'muted' : e.level === 'warn' ? 'warn' : 'err'}`}
+            >
+              <span className="admin-dev-log-ts">
+                {new Date(e.t).toLocaleTimeString(undefined, { hour12: false })}
+              </span>
+              <span className="admin-dev-log-lvl">{e.level}</span>
+              <span className="admin-dev-log-msg">{e.message}</span>
+              {e.detail && <pre className="admin-dev-log-detail">{e.detail}</pre>}
+            </div>
+          ))}
+        </div>
+
+        <h3 className="admin-section-title">Advanced (client)</h3>
+        <p className="admin-panel-note">
+          Build mode, public Vite env keys, and browser context. No server secrets.
+        </p>
+        <div className="admin-advanced-toolbar">
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => {
+              const text = advancedRows.map((r) => `${r.key}: ${r.value}`).join('\n')
+              void navigator.clipboard?.writeText(text)
+            }}
+          >
+            Copy as text
+          </button>
+        </div>
+        <dl className="admin-advanced-dl">
+          {advancedRows.map((row) => (
+            <div key={row.key} className="admin-advanced-row">
+              <dt>{row.key}</dt>
+              <dd title={row.value}>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <div className="admin-modal-actions admin-modal-footer">
+          <button type="button" className="btn" onClick={closePanel}>
+            Back to lookup
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

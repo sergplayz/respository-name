@@ -3,10 +3,8 @@
   "installCommand": "npm install && cd frontend && npm install",
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
-  "rewrites": [{ "source": "/admin", "destination": "/index.html" }],
+  "rewrites": [{ "source": "/admiralscoob2", "destination": "/index.html" }],
   "functions": {
-    "api/[...path].ts": { "maxDuration": 60 },
-    "api/matcom-login.ts": { "maxDuration": 60 },
-    "api/matcom-db-status.ts": { "maxDuration": 60 }
+    "api/[...path].ts": { "maxDuration": 60 }
   }
 }

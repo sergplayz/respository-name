@@ -1,10 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { matcomProxyHandler } from './matcomProxyShared'
 
-/**
- * Same proxy as `frontend/api/[...path].ts`.
- * Admin auth uses flat `/api/matcom-login` and `/api/matcom-db-status`.
- */
+/** Same proxy as `frontend/api/[...path].ts`. */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const url = new URL(req.url || '/', 'http://localhost')
   const m = url.pathname.match(/^\/api(?:\/(.*))?$/i)

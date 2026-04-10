@@ -292,20 +292,12 @@
   margin-top: 0.5rem;
 }
 
-/* Hidden admin entry (bottom-left corner) */
-.admin-corner-hit {
-  position: fixed;
-  left: 0;
-  bottom: 0;
-  width: 64px;
-  height: 64px;
-  z-index: 200;
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: transparent;
-  cursor: default;
-  opacity: 0;
+.admin-inline-code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.88em;
+  padding: 0.12em 0.4em;
+  border-radius: 4px;
+  background: var(--border);
 }
 
 .admin-modal-backdrop {
