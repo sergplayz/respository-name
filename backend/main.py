@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import time
 from collections import defaultdict
@@ -164,10 +165,15 @@ def human_label(table: str) -> str:
 # SQLite column names from spreadsheet export. "Unnamed: N" are filler names for columns
 # that had no header text in row 1 (e.g. link-only columns in the sheet). The export
 # merged real fields; first column is the padded sheet title cell but holds User rows.
+#
+# The personnel roster (white layout) uses real header row semantics; we map those below.
+# Other tabs often put a title in row 1, so pandas leaves blanks → Unnamed:*. For those
+# sheets we add either exact-name maps or COLUMN_DISPLAY_BY_CID (labels by column order).
 _PERSONNEL_SHEET_COL_A = "                  United States Space Force Materiel Command Database"
 _CERT_BOARD_COL_A = "                  USSF MMATCOM Database"
 # Sheet typo: double space after "United" in this tab.
 _PROGRESS_ROSTER_COL_A = "                  United  States Space Force Materiel Command Database"
+_USSF_MATCOM_DB = "USSF MATCOM Database"
 
 # Maps table name -> sqlite column name -> human-readable label (from roster layout).
 COLUMN_DISPLAY_LABELS: dict[str, dict[str, str]] = {
@@ -237,19 +243,63 @@ COLUMN_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "Unnamed: 12": "Streak",
         "Unnamed: 13": "Streak End",
     },
+    "discharge_roster": {
+        _USSF_MATCOM_DB: "Section / title",
+        "Unnamed: 1": "Date",
+        "Unnamed: 2": "Username",
+        "Unnamed: 3": "Position",
+        "Unnamed: 4": "Type of discharge",
+        "Unnamed: 5": "Reason",
+        "Unnamed: 6": "Spacer",
+        "Unnamed: 7": "Approved by",
+        "Unnamed: 8": "—",
+        "Unnamed: 9": "Date (honorable block)",
+        "Unnamed: 10": "Username (honorable block)",
+    },
 }
+COLUMN_DISPLAY_LABELS["discharge"] = COLUMN_DISPLAY_LABELS["discharge_roster"]
+
+# When row-1 names are wrong but column order matches the sheet body (e.g. discharge tab).
+_DISCHARGE_ROSTER_CID_LABELS = [
+    "Section / title",
+    "Date",
+    "Username",
+    "Position",
+    "Type of discharge",
+    "Reason",
+    "Spacer",
+    "Approved by",
+    "—",
+    "Date (honorable block)",
+    "Username (honorable block)",
+]
+
+COLUMN_DISPLAY_BY_CID: dict[str, list[str]] = {
+    "discharge_roster": _DISCHARGE_ROSTER_CID_LABELS,
+    # Alternate sqlite names from some import scripts
+    "discharge": _DISCHARGE_ROSTER_CID_LABELS,
+}
+
+_UNNAMED_COL_RE = re.compile(r"^Unnamed:(\d+)$")
 
 
 def enrich_columns(table: str, columns: list[dict]) -> list[dict]:
-    overrides = COLUMN_DISPLAY_LABELS.get(table)
-    if not overrides:
-        return columns
+    name_overrides = COLUMN_DISPLAY_LABELS.get(table)
+    cid_labels = COLUMN_DISPLAY_BY_CID.get(table)
     out: list[dict] = []
     for col in columns:
         c = dict(col)
         name = col["name"]
-        if name in overrides:
-            c["displayName"] = overrides[name]
+        cid = col["cid"]
+        display: str | None = None
+        if name_overrides and name in name_overrides:
+            display = name_overrides[name]
+        elif cid_labels is not None and cid < len(cid_labels) and cid_labels[cid].strip():
+            display = cid_labels[cid]
+        elif m := _UNNAMED_COL_RE.match(name):
+            display = f"Field {int(m.group(1)) + 1}"
+        if display is not None:
+            c["displayName"] = display
         out.append(c)
     return out
 
